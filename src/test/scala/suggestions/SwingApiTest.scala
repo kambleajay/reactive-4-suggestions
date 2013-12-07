@@ -1,7 +1,6 @@
 package suggestions
 
 
-
 import scala.collection._
 import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -16,9 +15,10 @@ import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 
 @RunWith(classOf[JUnitRunner])
-class SwingApiTest extends FunSuite {
+class SwingApiTest extends FunSpec {
 
   object swingApi extends SwingApi {
+
     class ValueChanged(val textField: TextField) extends Event
 
     object ValueChanged {
@@ -39,12 +39,15 @@ class SwingApiTest extends FunSuite {
 
     class Component {
       private val subscriptions = mutable.Set[Reaction]()
+
       def subscribe(r: Reaction) {
         subscriptions add r
       }
+
       def unsubscribe(r: Reaction) {
         subscriptions remove r
       }
+
       def publish(e: Event) {
         for (r <- subscriptions) r(e)
       }
@@ -52,7 +55,9 @@ class SwingApiTest extends FunSuite {
 
     class TextField extends Component {
       private var _text = ""
+
       def text = _text
+
       def text_=(t: String) {
         _text = t
         publish(new ValueChanged(this))
@@ -64,27 +69,85 @@ class SwingApiTest extends FunSuite {
         publish(new ButtonClicked(this))
       }
     }
+
   }
 
   import swingApi._
 
-  test("SwingApi should emit text field values to the observable") {
-    val textField = new swingApi.TextField
-    val values = textField.textValues
+  describe("SwingApi") {
 
-    val observed = mutable.Buffer[String]()
-    val sub = values subscribe {
-      observed += _
+    it("should emit text field values to the observable") {
+      val textField = new swingApi.TextField
+      val values = textField.textValues
+
+      val observed = mutable.Buffer[String]()
+      val sub = values subscribe {
+        observed += _
+      }
+
+      // write some text now
+      textField.text = "T"
+      textField.text = "Tu"
+      textField.text = "Tur"
+      textField.text = "Turi"
+      textField.text = "Turin"
+      textField.text = "Turing"
+
+      assert(observed === Seq("T", "Tu", "Tur", "Turi", "Turin", "Turing"), observed)
     }
 
-    // write some text now
-    textField.text = "T"
-    textField.text = "Tu"
-    textField.text = "Tur"
-    textField.text = "Turi"
-    textField.text = "Turin"
-    textField.text = "Turing"
+    it("should not emit text field values post unsubscribe") {
+      val textField = new swingApi.TextField
+      val values = textField.textValues
 
-    assert(observed == Seq("T", "Tu", "Tur", "Turi", "Turin", "Turing"), observed)
+      val observed = mutable.Buffer[String]()
+      val sub = values subscribe {
+        observed += _
+      }
+
+      // write some text now
+      textField.text = "T"
+      textField.text = "Tu"
+      textField.text = "Tur"
+      textField.text = "Turi"
+      textField.text = "Turin"
+      sub.unsubscribe
+      textField.text = "Turing"
+
+      assert(observed === Seq("T", "Tu", "Tur", "Turi", "Turin"), observed)
+    }
+
+    it("should emit button clicks to the observable") {
+      val button = new swingApi.Button
+      val clicksRecv = button.clicks
+
+      var countOfClicks = 0
+      clicksRecv subscribe { b =>
+        countOfClicks = countOfClicks + 1
+      }
+
+      button.click()
+      button.click()
+      button.click()
+
+      assert(countOfClicks === 3)
+    }
+
+    it("should not emit button clicks to the observable post unsubscribe") {
+      val button = new swingApi.Button
+      val clicksRecv = button.clicks
+
+      var countOfClicks = 0
+      val sub = clicksRecv subscribe { b =>
+        countOfClicks = countOfClicks + 1
+      }
+
+      button.click()
+      sub.unsubscribe
+      button.click()
+      button.click()
+
+      assert(countOfClicks === 1)
+    }
   }
 }
