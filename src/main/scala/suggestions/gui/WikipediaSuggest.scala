@@ -81,10 +81,16 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
      */
 
     // TO IMPLEMENT
-    val searchTerms: Observable[String] = ???
+    val searchTerms: Observable[String] = searchTermField.textValues.sanitized
 
     // TO IMPLEMENT
-    val suggestions: Observable[Try[List[String]]] = ???
+    val suggestions: Observable[Try[List[String]]] = {
+      searchTerms.concatRecovered { term =>
+        val r1: Future[List[String]] = wikipediaSuggestion(term)
+        val r2: Observable[List[String]] = ObservableEx(r1)
+        r2
+      }
+    }
 
 
     // TO IMPLEMENT
@@ -109,8 +115,8 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
 
 
 trait ConcreteWikipediaApi extends WikipediaApi {
-  def wikipediaSuggestion(term: String) = Search.wikipediaSuggestion(term)
-  def wikipediaPage(term: String) = Search.wikipediaPage(term)
+  def wikipediaSuggestion(term: String): Future[List[String]] = Search.wikipediaSuggestion(term)
+  def wikipediaPage(term: String): Future[String] = Search.wikipediaPage(term)
 }
 
 

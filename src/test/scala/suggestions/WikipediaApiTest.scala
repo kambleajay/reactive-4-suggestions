@@ -12,6 +12,7 @@ import gui._
 import org.junit.runner.RunWith
 import org.scalatest.junit.JUnitRunner
 import scala.collection.mutable.ListBuffer
+import rx.lang.scala.subscriptions.Subscription
 
 @RunWith(classOf[JUnitRunner])
 class WikipediaApiTest extends FunSpec {
@@ -87,11 +88,17 @@ class WikipediaApiTest extends FunSpec {
       assert(failure === 1)
     }
 
-    ignore("should correctly use concatRecovered") {
-      val requests = Observable(1, 2, 3)
-      val remoteComputation = (n: Int) => Observable(0 to n)
-      val responses = requests concatRecovered remoteComputation
-      val sum = responses.foldLeft(0) {
+    it("should stop emitting values after timeout") {
+      val clock = Observable.interval(0.3 second)
+      val timedOut = clock.timedOut(2)
+      assert(timedOut.toBlockingObservable.toList.length === 6)
+    }
+
+    it("should correctly use concatRecovered") {
+      val requests: Observable[Int] = Observable(1, 2, 3)
+      val remoteComputation: (Int) => Observable[Int] = (n: Int) => Observable(0 to n)
+      val responses: Observable[Try[Int]] = requests concatRecovered remoteComputation
+      val sum: Observable[Int] = responses.foldLeft(0) {
         (acc, tn) =>
           tn match {
             case Success(n) => acc + n
@@ -100,9 +107,20 @@ class WikipediaApiTest extends FunSpec {
       }
       var total = -1
       val sub = sum.subscribe {
-        s => total = s
+        s => {
+          print(s +" ")
+          total = s
+        }
       }
       assert(total == (1 + 1 + 2 + 1 + 2 + 3), s"Sum: $total")
+    }
+
+    it("should emit values post exception using concatRecovered") {
+      val exception = new Exception("test")
+      val expected = List(Success(2), Success(1), Failure(exception), Success(1), Success(0), Failure(exception))
+
+      val actual = Observable(2, 1).concatRecovered( i => Observable(i, i-1) ++ Observable(exception)).toBlockingObservable.toList
+      assert(actual === expected)
     }
   }
 }
