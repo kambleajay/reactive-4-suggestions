@@ -6,7 +6,7 @@ import scala.collection.JavaConverters._
 import scala.concurrent._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.swing._
-import scala.util.{ Try, Success, Failure }
+import scala.util.{Try, Success, Failure}
 import scala.swing.event._
 import swing.Swing._
 import javax.swing.UIManager
@@ -16,6 +16,7 @@ import rx.lang.scala.Observable
 import rx.lang.scala.Subscription
 import observablex._
 import search._
+import scala.concurrent.duration._
 
 object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi with ConcreteWikipediaApi {
 
@@ -41,7 +42,9 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
     val suggestionList = new ListView(ListBuffer[String]())
     val status = new Label(" ")
     val editorpane = new EditorPane {
+
       import javax.swing.border._
+
       border = new EtchedBorder(EtchedBorder.LOWERED)
       editable = false
       peer.setContentType("text/html")
@@ -74,10 +77,10 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
     /**
      * Observables
      * You may find the following methods useful when manipulating GUI elements:
-     *  `myListView.listData = aList` : sets the content of `myListView` to `aList`
-     *  `myTextField.text = "react"` : sets the content of `myTextField` to "react"
-     *  `myListView.selection.items` returns a list of selected items from `myListView`
-     *  `myEditorPane.text = "act"` : sets the content of `myEditorPane` to "act"
+     * `myListView.listData = aList` : sets the content of `myListView` to `aList`
+     * `myTextField.text = "react"` : sets the content of `myTextField` to "react"
+     * `myListView.selection.items` returns a list of selected items from `myListView`
+     * `myEditorPane.text = "act"` : sets the content of `myEditorPane` to "act"
      */
 
     // TO IMPLEMENT
@@ -85,28 +88,44 @@ object WikipediaSuggest extends SimpleSwingApplication with ConcreteSwingApi wit
 
     // TO IMPLEMENT
     val suggestions: Observable[Try[List[String]]] = {
-      searchTerms.concatRecovered { term =>
-        val r1: Future[List[String]] = wikipediaSuggestion(term)
-        val r2: Observable[List[String]] = ObservableEx(r1)
-        r2
+      searchTerms.concatRecovered {
+        term =>
+          val r1: Future[List[String]] = wikipediaSuggestion(term)
+          val r2: Observable[List[String]] = ObservableEx(r1)
+          r2
       }
     }
 
+    // TO IMPLEMENT
+    val suggestionSubscription: Subscription = suggestions.observeOn(eventScheduler).subscribe(
+      (x: Try[List[String]]) => x match {
+        case Success(xs) => suggestionList.listData = xs
+        case Failure(err) => status.text = err.getMessage
+      },
+      (ex: Throwable) => status.text = ex.getMessage
+    )
 
     // TO IMPLEMENT
-    val suggestionSubscription: Subscription =  suggestions.observeOn(eventScheduler) subscribe {
-      x => ???
+    //button clicks -> suggestion list selected text
+    val selections: Observable[String] = button.clicks.map {
+      btn =>
+        val noOfSelections = suggestionList.selection.items.size
+        noOfSelections match {
+          case 0 => None
+          case x => Some(suggestionList.selection.items.head)
+        }
+    }.filter(opt => opt != None).map(_.get)
+
+    // TO IMPLEMENT
+    val pages: Observable[Try[String]] = selections map {
+      selection => {
+        Try { Await.result(wikipediaPage(selection), 5 seconds) }
+      }
     }
 
     // TO IMPLEMENT
-    val selections: Observable[String] = ???
-
-    // TO IMPLEMENT
-    val pages: Observable[Try[String]] = ???
-
-    // TO IMPLEMENT
     val pageSubscription: Subscription = pages.observeOn(eventScheduler) subscribe {
-      x => ???
+      x => x.map(s => editorpane.text = s)
     }
 
   }
@@ -122,19 +141,23 @@ trait ConcreteWikipediaApi extends WikipediaApi {
 
 trait ConcreteSwingApi extends SwingApi {
   type ValueChanged = scala.swing.event.ValueChanged
+
   object ValueChanged {
     def unapply(x: Event) = x match {
       case vc: ValueChanged => Some(vc.source.asInstanceOf[TextField])
       case _ => None
     }
   }
+
   type ButtonClicked = scala.swing.event.ButtonClicked
+
   object ButtonClicked {
     def unapply(x: Event) = x match {
       case bc: ButtonClicked => Some(bc.source.asInstanceOf[Button])
       case _ => None
     }
   }
+
   type TextField = scala.swing.TextField
   type Button = scala.swing.Button
 }
